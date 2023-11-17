@@ -1,6 +1,6 @@
 import { Socket } from "socket.io-client";
 
-export type UserOnlineType = {
+export type UserType = {
   socketId: Socket;
   userId: string;
   userName: string;
