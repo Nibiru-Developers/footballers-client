@@ -4,6 +4,7 @@ import { useAtom } from "jotai";
 import Swal from "sweetalert2";
 import _ from "lodash";
 import {
+  OnlineStatusLoadingAtom,
   onlineStatusAtom,
   socketConnectionAtom,
   userIdAtom,
@@ -16,13 +17,17 @@ import Env from "../utils/Env";
 const badgeColor = ["primary", "success", "warning", "danger", "info"];
 
 export default function HomePage() {
-  const [online, setOnline] = useAtom(onlineStatusAtom);
+  const [onlineStatusLoading, setOnlineStatusLoading] = useAtom(
+    OnlineStatusLoadingAtom
+  );
+  const [onlineStatus, setOnlineStatus] = useAtom(onlineStatusAtom);
   const [userId] = useAtom(userIdAtom);
   const [userName, setUserName] = useAtom(userNameAtom);
   const [socketConnection, setSocketConnection] = useAtom(socketConnectionAtom);
   const [usersOnline, setUsersOnline] = useAtom(usersOnlineAtom);
 
   const goOnline = () => {
+    setOnlineStatusLoading(true);
     if (!userName) {
       Swal.fire({
         icon: "error",
@@ -38,8 +43,9 @@ export default function HomePage() {
       });
 
       socketIO.on("connect", () => {
+        setOnlineStatusLoading(false);
         setSocketConnection(socketIO);
-        setOnline(true);
+        setOnlineStatus(true);
       });
 
       socketIO.on("userOnlineUpdate", (response) => {
@@ -61,7 +67,7 @@ export default function HomePage() {
       if (result.isConfirmed) {
         socketConnection?.disconnect();
         setSocketConnection(null);
-        setOnline(false);
+        setOnlineStatus(false);
       }
     });
   };
@@ -77,7 +83,7 @@ export default function HomePage() {
           <p className="mb-2">Socket ID: {socketConnection.id}</p>
         )}
 
-        {!online && (
+        {!onlineStatus && (
           <input
             type="text"
             style={{ maxWidth: "450px" }}
@@ -88,17 +94,31 @@ export default function HomePage() {
           />
         )}
 
-        {online ? (
-          <button className="btn btn-danger" onClick={goOffline}>
-            Go Offline
+        {onlineStatusLoading ? (
+          <button className="btn btn-primary" type="button" disabled>
+            <span
+              className="spinner-grow spinner-grow-sm"
+              role="status"
+              aria-hidden="true"
+            ></span>
+            {" "}
+            Loading...
           </button>
         ) : (
-          <button className="btn btn-primary" onClick={goOnline}>
-            Go Online
-          </button>
+          <>
+            {onlineStatus ? (
+              <button className="btn btn-danger" onClick={goOffline}>
+                Go Offline
+              </button>
+            ) : (
+              <button className="btn btn-primary" onClick={goOnline}>
+                Go Online
+              </button>
+            )}
+          </>
         )}
 
-        {online && (
+        {onlineStatus && (
           <>
             <h5 className="mt-4">User Online:</h5>
             <div className="d-flex">
