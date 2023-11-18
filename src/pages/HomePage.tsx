@@ -79,13 +79,16 @@ export default function HomePage() {
         }
       });
 
+      console.log(questions);
+      console.log(score);
+
       socketConnection.emit("storeScore", {
         userId: userId,
         roomId: roomId,
         score: score,
       });
     });
-  }, [playing]);
+  }, [playing, questions]);
 
   const goOnline = () => {
     if (!userName) {
@@ -154,7 +157,6 @@ export default function HomePage() {
       });
     }
   };
-  
 
   const goOffline = () => {
     Swal.fire({
