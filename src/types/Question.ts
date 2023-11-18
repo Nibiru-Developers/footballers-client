@@ -9,4 +9,5 @@ export type QuestionType = {
   question: string;
   options: QuestionOptionsType;
   answer: string;
+  choice: string;
 };

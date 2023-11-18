@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import io from "socket.io-client";
 import { useAtom } from "jotai";
 import { toast } from "react-toastify";
@@ -16,11 +16,13 @@ import {
   roomIdAtom,
   questionsAtom,
   timeRemainingAtom,
+  scoresAtom,
 } from "../global/GlobalData";
 import Navbar from "../components/Navbar";
 import Env from "../utils/Env";
 import { popToast } from "../utils/Toast";
 import { Slide } from "react-slideshow-image";
+import { QuestionType } from "../types/Question";
 
 const badgeColor = [
   "#F05941",
@@ -57,6 +59,7 @@ export default function HomePage() {
   const [playing, setPlaying] = useAtom(playingAtom);
   const [timeRemaining, setTimeRemaining] = useAtom(timeRemainingAtom);
   const [questions, setQuestions] = useAtom(questionsAtom);
+  const [scores, setScores] = useAtom(scoresAtom);
 
   const [userId] = useAtom(userIdAtom);
   const [userName, setUserName] = useAtom(userNameAtom);
@@ -65,7 +68,24 @@ export default function HomePage() {
   const [socketConnection, setSocketConnection] = useAtom(socketConnectionAtom);
   const [usersOnline, setUsersOnline] = useAtom(usersOnlineAtom);
 
-  console.log(questions);
+  useEffect(() => {
+    socketConnection?.on("matchFinished", () => {
+      setPlaying(false);
+
+      let score = 0;
+      questions.forEach((question) => {
+        if (question.choice === question.answer) {
+          score += 20;
+        }
+      });
+
+      socketConnection.emit("storeScore", {
+        userId: userId,
+        roomId: roomId,
+        score: score,
+      });
+    });
+  }, [playing]);
 
   const goOnline = () => {
     if (!userName) {
@@ -112,7 +132,12 @@ export default function HomePage() {
         setWaitingStatusLoading(false);
         setRoomId(response.roomId);
         setPlaying(true);
-        setQuestions(response.questions);
+        setQuestions(
+          response.questions.map((question: QuestionType) => ({
+            ...question,
+            choice: "",
+          }))
+        );
         popToast(response.message);
       });
 
@@ -121,9 +146,11 @@ export default function HomePage() {
       });
 
       socketIO.on("matchFinished", (response) => {
-        setRoomId("");
-        setPlaying(false);
         popToast(response.message);
+      });
+
+      socketIO.on("giveResultScore", (response) => {
+        setScores(response.scores);
       });
     }
   };
@@ -141,21 +168,37 @@ export default function HomePage() {
       if (result.isConfirmed) {
         socketConnection?.disconnect();
         setSocketConnection(null);
-        setOnlineStatusLoading(false);
-        setOnlineStatus(false);
-        setWaitingStatusLoading(false);
-        setPlaying(false);
         setUsersOnline([]);
-        setRoomId("");
+
+        resetGame();
       }
     });
   };
 
   const matchmaking = () => {
+    resetGame();
     socketConnection?.emit("matchmaking", {
       userId,
       userName,
     });
+  };
+
+  const resetGame = () => {
+    setRoomId("");
+    setWaitingStatusLoading(false);
+    setPlaying(false);
+    setTimeRemaining(0);
+    setQuestions([]);
+    setScores([]);
+  };
+
+  const answerQuestion = (answer: string, index: number) => {
+    const newAnsweredQuestions = [...questions];
+    newAnsweredQuestions[index] = {
+      ...newAnsweredQuestions[index],
+      choice: answer,
+    };
+    setQuestions(newAnsweredQuestions);
   };
 
   return (
@@ -165,10 +208,10 @@ export default function HomePage() {
       <div className="container my-3">
         <p className="mb-2">User ID: {userId}</p>
         {userName && <p className="mb-2">User Name: {userName}</p>}
-        {roomId && <p className="mb-2">Room ID: {roomId}</p>}
         {socketConnection?.id && (
           <p className="mb-2">Socket ID: {socketConnection.id}</p>
         )}
+        {roomId && <p className="mb-2">Room ID: {roomId}</p>}
 
         {!onlineStatus && (
           <input
@@ -226,14 +269,36 @@ export default function HomePage() {
             ) : (
               <>
                 {!playing ? (
-                  <div className="mb-3 d-flex justify-content-center">
-                    <button className="btn btn-primary" onClick={matchmaking}>
-                      Play Now!
-                    </button>
-                  </div>
+                  <>
+                    <div className="mb-3 d-flex justify-content-center">
+                      <button className="btn btn-primary" onClick={matchmaking}>
+                        Play Now!
+                      </button>
+                    </div>
+                    {Boolean(scores.length) && (
+                      <div
+                        className="bg-light px-3 py-4 rounded mx-auto mt-4"
+                        style={{ maxWidth: "350px" }}
+                      >
+                        <h1 className="text-center fs-2 mb-3">SCORE</h1>
+                        {_.sortBy(scores, "score")
+                          .reverse()
+                          .map((score, index) => (
+                            <div key={index}>
+                              <p className="my-2">
+                                {index + 1}. {score.userName} ({score.userId}) -{" "}
+                                {score.score} Poin
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
-                    <h1>{timeRemaining}</h1>
+                    <h1 className="text-center">
+                      {timeRemaining ? timeRemaining : "..."}
+                    </h1>
                     <Slide
                       autoplay={false}
                       onChange={function noRefCheck() {}}
@@ -241,23 +306,56 @@ export default function HomePage() {
                       transitionDuration={500}
                     >
                       {questions.map((question, index) => (
-                        <div className="each-slide-effect px-5 py-4 bg-light rounded">
+                        <div
+                          key={index}
+                          className="each-slide-effect px-5 py-4 bg-light rounded"
+                        >
                           <h5>Footballers Quiz</h5>
                           <div>
-                            <span className="fw-bold">
-                              {index + 1}. {question.question}
-                            </span>
-                            <div>
-                              <span>A. {question.options.a}</span>
+                            <div className="fw-bold mb-3">
+                              <span>
+                                {index + 1}. {question.question}
+                              </span>
                             </div>
-                            <div>
-                              <span>B. {question.options.b}</span>
+                            <div className="mb-1">
+                              <span
+                                onClick={() => answerQuestion("a", index)}
+                                className={`${
+                                  question.choice === "a" && "fw-bold"
+                                } pointer`}
+                              >
+                                A. {question.options.a}
+                              </span>
                             </div>
-                            <div>
-                              <span>C. {question.options.c}</span>
+                            <div className="mb-1">
+                              <span
+                                onClick={() => answerQuestion("b", index)}
+                                className={`${
+                                  question.choice === "b" && "fw-bold"
+                                } pointer`}
+                              >
+                                B. {question.options.b}
+                              </span>
                             </div>
-                            <div>
-                              <span>D. {question.options.d}</span>
+                            <div className="mb-1">
+                              <span
+                                onClick={() => answerQuestion("c", index)}
+                                className={`${
+                                  question.choice === "c" && "fw-bold"
+                                } pointer`}
+                              >
+                                C. {question.options.c}
+                              </span>
+                            </div>
+                            <div className="mb-1">
+                              <span
+                                onClick={() => answerQuestion("d", index)}
+                                className={`${
+                                  question.choice === "d" && "fw-bold"
+                                } pointer`}
+                              >
+                                D. {question.options.d}
+                              </span>
                             </div>
                           </div>
                         </div>
