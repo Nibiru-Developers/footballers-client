@@ -154,6 +154,7 @@ export default function HomePage() {
       });
     }
   };
+  
 
   const goOffline = () => {
     Swal.fire({
@@ -168,6 +169,8 @@ export default function HomePage() {
       if (result.isConfirmed) {
         socketConnection?.disconnect();
         setSocketConnection(null);
+        setOnlineStatusLoading(false);
+        setOnlineStatus(false);
         setUsersOnline([]);
 
         resetGame();
